@@ -30,6 +30,7 @@
 #include <QFileInfo>
 #include <QProcess>
 #include <QUrl>
+#include <QDir>
 
 using namespace Peony;
 
@@ -51,32 +52,39 @@ QList<QAction*> MenuPluginExample::menuActions(Types types, const QString& uri, 
     QUrl url = selectionUris.first();
     QFileInfo fileInfo(url.toLocalFile());
     
-    QString menuText = tr("Xarchiver压缩");
+    QDir::setCurrent(fileInfo.absolutePath());
+    
+    QString menuText = tr("Ark压缩");
     bool isArchive = false;
-    if (fileInfo.exists() && fileInfo.isFile()) {
+    if (selectionUris.size() == 1 && fileInfo.exists() && fileInfo.isFile()) {
       QStringList archiveExtensions;
       archiveExtensions << "zip" << "tar" << "gz" << "bz2" << "xz" << "7z" << "rar" << "tgz";
       QString ext = fileInfo.suffix().toLower();
       if (archiveExtensions.contains(ext)) {
         isArchive = true;
-        menuText = tr("Xarchiver解压");
+        menuText = tr("Ark解压");
       }
     }
     QAction* action0 = new QAction(QIcon::fromTheme("package-x-generic"), menuText);
     connect(action0, &QAction::triggered, [=]() {
       if (url.path().isEmpty()) return;
-        QString command = "xarchiver";
-        QStringList args;
+      QString command = "ark";
+      QStringList args;
+
       if (isArchive) {
-        args << "--extract-to" << url.path() << ".";
+        // args << "-b" << "-a" << "-o" << fileInfo.absolutePath() << url.path();
+        args << "-b" << "-a" << url.path();
+        if (!QProcess::startDetached("ark", args)) {
+          qWarning() << "无法启动 ark，请检查是否已安装在系统路径中。";
+        }
       } else {
-        args << "--add" << "--compress";
+        args << "-b" << "-f" << "tgz" << "-c";
         for (const QUrl &iurl : selectionUris) {
           args << iurl.path();
         }
-      }
-      if (!QProcess::startDetached("xarchiver", args)) {
-        qWarning() << "无法启动 xarchiver，请检查是否已安装在系统路径中。";
+        if (!QProcess::startDetached("ark", args)) {
+          qWarning() << "无法启动 ark，请检查是否已安装在系统路径中。";
+        }
       }
     });
     actions << action0;
@@ -94,7 +102,11 @@ QList<QAction*> MenuPluginExample::menuActions(Types types, const QString& uri, 
     }
   }
 
-  QAction* action2 = new QAction(QIcon::fromTheme("media-eject"), tr("VSCode打开"));
+  QIcon codeIcon = QIcon::fromTheme("code");
+  if (codeIcon.isNull()) {
+    codeIcon = QIcon::fromTheme("accessories-text-editor");
+  }
+  QAction* action2 = new QAction(codeIcon, tr("VSCode打开"));
   connect(action2, &QAction::triggered, [=]() {
     QProcess p(0);
     QString command = "code";
