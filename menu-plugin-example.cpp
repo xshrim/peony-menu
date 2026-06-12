@@ -31,6 +31,7 @@
 #include <QProcess>
 #include <QUrl>
 #include <QDir>
+#include <QMessageBox>
 
 using namespace Peony;
 
@@ -54,6 +55,19 @@ QList<QAction*> MenuPluginExample::menuActions(Types types, const QString& uri, 
     
     QDir::setCurrent(fileInfo.absolutePath());
     
+    if (fileInfo.exists() && fileInfo.isDir()) {
+      QAction* action0 = new QAction(QIcon::fromTheme("folder"), tr("文件管理器打开"));
+      connect(action0, &QAction::triggered, [=]() {
+        QStringList args;
+        args << url.path();
+        if (!QProcess::startDetached("nemo", args)) {
+          QMessageBox::information(nullptr, "提示", "无法启动 nemo，请检查是否已安装在系统路径中。");
+          qWarning() << "无法启动 nemo，请检查是否已安装在系统路径中。";
+        }
+      });
+      actions << action0;
+    }
+    
     QString menuText = tr("Ark压缩");
     bool isArchive = false;
     if (selectionUris.size() == 1 && fileInfo.exists() && fileInfo.isFile()) {
@@ -65,49 +79,84 @@ QList<QAction*> MenuPluginExample::menuActions(Types types, const QString& uri, 
         menuText = tr("Ark解压");
       }
     }
-    QAction* action0 = new QAction(QIcon::fromTheme("package-x-generic"), menuText);
-    connect(action0, &QAction::triggered, [=]() {
+    QAction* action1 = new QAction(QIcon::fromTheme("package-x-generic"), menuText);
+    connect(action1, &QAction::triggered, [=]() {
       if (url.path().isEmpty()) return;
       QString command = "ark";
       QStringList args;
 
       if (isArchive) {
-        // args << "-b" << "-a" << "-o" << fileInfo.absolutePath() << url.path();
-        args << "-b" << "-a" << url.path();
-        if (!QProcess::startDetached("ark", args)) {
-          qWarning() << "无法启动 ark，请检查是否已安装在系统路径中。";
+        if (fileInfo.completeBaseName().toLower().endsWith(".tar")) {
+          command = "tar";
+          // 预览 tar 包内部文件列表
+          QProcess* listProcess = new QProcess();
+          listProcess->start(command, QStringList() << "-tf" << url.path());
+          listProcess->waitForFinished();
+
+          QString output = QString::fromUtf8(listProcess->readAllStandardOutput().trimmed());
+          listProcess->deleteLater();
+
+          QStringList lines = output.split('\n', QString::SkipEmptyParts);
+          if (lines.isEmpty()) return;
+
+          QString targetDir = ".";
+          
+          if (lines.size() > 1) {
+            targetDir = fileInfo.completeBaseName();
+            targetDir.chop(4);
+            QDir().mkpath(targetDir);
+          }
+        
+          args << "-xf" << url.path() << "-C" << targetDir;
+          if (!QProcess::startDetached(command, args)) {
+            QMessageBox::information(nullptr, "提示", "无法启动 ark，请检查是否已安装在系统路径中。");
+            qWarning() << "无法启动 tar，请检查是否已安装在系统路径中。";
+          }
+        } else {
+          // args << "-b" << "-a" << "-o" << fileInfo.absolutePath() << url.path();
+          args << "-b" << "-a" << url.path();
+          if (!QProcess::startDetached(command, args)) {
+            QMessageBox::information(nullptr, "提示", "无法启动 ark，请检查是否已安装在系统路径中。");
+            qWarning() << "无法启动 ark，请检查是否已安装在系统路径中。";
+          }
         }
       } else {
         args << "-b" << "-f" << "tgz" << "-c";
         for (const QUrl &iurl : selectionUris) {
           args << iurl.path();
         }
-        if (!QProcess::startDetached("ark", args)) {
+        if (!QProcess::startDetached(command, args)) {
+          QMessageBox::information(nullptr, "提示", "无法启动 ark，请检查是否已安装在系统路径中。");
           qWarning() << "无法启动 ark，请检查是否已安装在系统路径中。";
         }
       }
     });
-    actions << action0;
+    actions << action1;
     
     if (fileInfo.exists() && fileInfo.isFile()) {
-      QAction* action1 = new QAction(QIcon::fromTheme("text-edit"), tr("NotePad打开"));
-      connect(action1, &QAction::triggered, [=]() {
+      QIcon nddIcon = QIcon::fromTheme("ndd");
+      if (nddIcon.isNull()) {
+        nddIcon = QIcon::fromTheme("text-editor");
+      }
+      QAction* action2 = new QAction(nddIcon, tr("NotePad打开"));
+      connect(action2, &QAction::triggered, [=]() {
         QStringList args;
         args << url.path();
         if (!QProcess::startDetached("notepad--", args)) {
+          QMessageBox::information(nullptr, "提示", "无法启动 notepad--，请检查是否已安装在系统路径中。");
           qWarning() << "无法启动 notepad--，请检查是否已安装在系统路径中。";
         }
       });
-      actions << action1;
+      actions << action2;
     }
   }
 
-  QIcon codeIcon = QIcon::fromTheme("code");
+  QIcon codeIcon = QIcon::fromTheme("vscode");
   if (codeIcon.isNull()) {
     codeIcon = QIcon::fromTheme("accessories-text-editor");
   }
-  QAction* action2 = new QAction(codeIcon, tr("VSCode打开"));
-  connect(action2, &QAction::triggered, [=]() {
+  QAction* action3 = new QAction(codeIcon, tr("VsCode打开"));
+  connect(action3, &QAction::triggered, [=]() {
     QProcess p(0);
     QString command = "code";
     QStringList args;
@@ -121,37 +170,37 @@ QList<QAction*> MenuPluginExample::menuActions(Types types, const QString& uri, 
     p.execute(command, args);
     qDebug() << QString::fromLocal8Bit(p.readAllStandardError());
   });
-  actions << action2;
-
-  QAction* action3 = new QAction(QIcon::fromTheme("media-playback-start"), tr("动作"));
   actions << action3;
-  QMenu* menu = new QMenu(action3->parentWidget());
-  connect(action3, &QAction::destroyed, [=]() {
+
+  QAction* action4 = new QAction(QIcon::fromTheme("media-playback-start"), tr("动作"));
+  actions << action4;
+  QMenu* menu = new QMenu(action4->parentWidget());
+  connect(action4, &QAction::destroyed, [=]() {
     qDebug() << "delete sub menu";
     menu->deleteLater();
   });
-  QAction* subaction1 = menu->addAction("动作1");
+  QAction* subaction2 = menu->addAction("动作1");
   menu->addSeparator();
-  QAction* subaction2 = menu->addAction("动作2");
-  action3->setMenu(menu);
-  connect(subaction1, &QAction::triggered, [=]() {
-    qDebug() << "click sub action1";
-    QProcess p(0);
-    QString command = "echo";
-    QStringList args;
-    args.append("action1");
-    p.execute(command, args);
-  });
+  QAction* subaction3 = menu->addAction("动作2");
+  action4->setMenu(menu);
   connect(subaction2, &QAction::triggered, [=]() {
-    qDebug() << "click sub action1";
+    qDebug() << "click sub action2";
     QProcess p(0);
     QString command = "echo";
     QStringList args;
     args.append("action2");
     p.execute(command, args);
   });
-  // QAction* action3 = new QAction(QIcon::fromTheme("document-open"), tr("打开"));
-  // connect(action3, &QAction::triggered, [=]() {
+  connect(subaction3, &QAction::triggered, [=]() {
+    qDebug() << "click sub action2";
+    QProcess p(0);
+    QString command = "echo";
+    QStringList args;
+    args.append("action3");
+    p.execute(command, args);
+  });
+  // QAction* action4 = new QAction(QIcon::fromTheme("document-open"), tr("打开"));
+  // connect(action4, &QAction::triggered, [=]() {
   //  QProcess p(0);
   //  QString command = "code";
   //  QStringList args;
@@ -167,7 +216,7 @@ QList<QAction*> MenuPluginExample::menuActions(Types types, const QString& uri, 
   //  p.execute(command, args);
   //  qDebug() << QString::fromLocal8Bit(p.readAllStandardError());
   // });
-  // actions << action3;
+  // actions << action4;
 
   return actions;
 }
