@@ -72,7 +72,7 @@ QList<QAction*> MenuPluginExample::menuActions(Types types, const QString& uri, 
     bool isArchive = false;
     if (selectionUris.size() == 1 && fileInfo.exists() && fileInfo.isFile()) {
       QStringList archiveExtensions;
-      archiveExtensions << "zip" << "tar" << "gz" << "bz2" << "xz" << "7z" << "rar" << "tgz";
+      archiveExtensions << "zip" << "tar" << "gz" << "bz2" << "xz" << "txz" << "zst" << "tzst" << "7z" << "rar" << "ar" << "tgz" << "cab" << "deb" << "rpm" << "apk" << "iso" << "cpio";
       QString ext = fileInfo.suffix().toLower();
       if (archiveExtensions.contains(ext)) {
         isArchive = true;
