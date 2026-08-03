@@ -32,6 +32,8 @@
 #include <QUrl>
 #include <QDir>
 #include <QMessageBox>
+#include <QStandardPaths>
+#include <QDesktopServices>
 
 using namespace Peony;
 
@@ -134,20 +136,77 @@ QList<QAction*> MenuPluginExample::menuActions(Types types, const QString& uri, 
     actions << action1;
     
     if (fileInfo.exists() && fileInfo.isFile()) {
-      QIcon nddIcon = QIcon::fromTheme("ndd");
-      if (nddIcon.isNull()) {
-        nddIcon = QIcon::fromTheme("text-editor");
-      }
-      QAction* action2 = new QAction(nddIcon, tr("NotePad打开"));
-      connect(action2, &QAction::triggered, [=]() {
-        QStringList args;
-        args << url.path();
-        if (!QProcess::startDetached("notepad--", args)) {
-          QMessageBox::information(nullptr, "提示", "无法启动 notepad--，请检查是否已安装在系统路径中。");
-          qWarning() << "无法启动 notepad--，请检查是否已安装在系统路径中。";
+        // 1. 安全获取本地文件真实路径
+        QString filePath = url.toLocalFile();
+        if (filePath.isEmpty()) {
+            filePath = url.path();
         }
-      });
-      actions << action2;
+
+        // 2. 检测系统中可用的编辑器程序
+        QString programPath;
+        QString menuText;
+        QIcon editorIcon;
+
+        // (1) 检查 Sublime Text (通常为 subl 或 sublime_text)
+        QString sublPath = QStandardPaths::findExecutable("subl");
+        if (sublPath.isEmpty()) {
+            sublPath = QStandardPaths::findExecutable("sublime_text");
+        }
+
+        if (!sublPath.isEmpty()) {
+            programPath = sublPath;
+            menuText = tr("SublimeText打开");
+            editorIcon = QIcon::fromTheme("sublime-text");
+            if (editorIcon.isNull()) {
+                editorIcon = QIcon::fromTheme("text-editor");
+            }
+        } 
+        // (2) 检查 notepad--
+        else {
+            QString nddPath = QStandardPaths::findExecutable("notepad--");
+            if (!nddPath.isEmpty()) {
+                programPath = nddPath;
+                menuText = tr("NotePad打开");
+                editorIcon = QIcon::fromTheme("notepad--");
+                if (editorIcon.isNull()) {
+                    editorIcon = QIcon::fromTheme("ndd");
+                }
+                if (editorIcon.isNull()) {
+                    editorIcon = QIcon::fromTheme("text-editor");
+                }
+            } 
+            // (3) 回退到操作系统默认文本编辑器
+            else {
+                menuText = tr("文本编辑器打开");
+                editorIcon = QIcon::fromTheme("text-editor");
+            }
+        }
+
+        // 3. 创建 Action
+        QAction* action2 = new QAction(editorIcon, menuText, this);
+
+        // 4. 绑定触发事件
+        connect(action2, &QAction::triggered, [programPath, filePath]() {
+            if (!programPath.isEmpty()) {
+                // 用指定的编辑器打开（Sublime 或 notepad--）
+                QStringList args;
+                args << filePath;
+                if (!QProcess::startDetached(programPath, args)) {
+                    // 参数 1 改为 nullptr
+                    QMessageBox::information(nullptr, tr("提示"), tr("无法启动编辑器：%1").arg(programPath));
+                    qWarning() << "无法启动编辑器:" << programPath;
+                }
+            } else {
+                // 用系统默认关联程序打开
+                if (!QDesktopServices::openUrl(QUrl::fromLocalFile(filePath))) {
+                    // 参数 1 改为 nullptr
+                    QMessageBox::information(nullptr, tr("提示"), tr("无法用系统默认程序打开文件。"));
+                    qWarning() << "QDesktopServices 无法打开文件:" << filePath;
+                }
+            }
+        });
+
+        actions << action2;
     }
   }
 
